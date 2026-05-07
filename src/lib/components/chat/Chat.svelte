@@ -202,12 +202,20 @@
 			`chat-input${chatIdProp ? `-${chatIdProp}` : ''}`
 		);
 
-		if (chatIdProp && (await loadChat())) {
-			await tick();
-			loading = false;
-			window.setTimeout(() => scrollToBottom(), 0);
+\t\tif (chatIdProp && (await loadChat())) {
+\t\t\tawait tick();
+\t\t\tloading = false;
 
-			await tick();
+\t\t\t// Force scroll to bottom across multiple frames to beat async content + browser scroll restoration
+\t\t\tconst scrollToBottomRaf = (remaining = 12) => {
+\t\t\t\tscrollToBottom();
+\t\t\t\tif (remaining > 0) {
+\t\t\t\t\trequestAnimationFrame(() => scrollToBottomRaf(remaining - 1));
+\t\t\t\t}
+\t\t\t};
+\t\t\trequestAnimationFrame(() => scrollToBottomRaf(12));
+
+\t\t\tawait tick();
 
 			// Mark chat read when initially loading it
 			if (chatIdProp && !$temporaryChatEnabled) {
@@ -698,6 +706,7 @@
 
 	onMount(() => {
 		loading = true;
+		history.scrollRestoration = 'manual';
 		console.log('mounted');
 		window.addEventListener('message', onMessageHandler);
 		$socket?.on('events', chatEventHandler);
@@ -1401,12 +1410,27 @@
 		}
 	};
 
+	// ResizeObserver — auto-scroll sempre que o conteúdo cresce (catch images, code blocks, lazy content)
+	let resizeObserver: ResizeObserver;
+	$: if (messagesContainerElement) {
+		resizeObserver?.disconnect();
+		resizeObserver = new ResizeObserver(() => {
+			if (autoScroll && !loading && messagesContainerElement) {
+				messagesContainerElement.scrollTop = messagesContainerElement.scrollHeight;
+			}
+		});
+		resizeObserver.observe(messagesContainerElement);
+	}
+	onDestroy(() => resizeObserver?.disconnect());
+
 	const scrollToBottom = async (behavior = 'auto') => {
 		await tick();
 		if (messagesContainerElement) {
-			messagesContainerElement.scrollTo({
-				top: messagesContainerElement.scrollHeight,
-				behavior
+			messagesContainerElement.scrollTop = messagesContainerElement.scrollHeight;
+			requestAnimationFrame(() => {
+				if (messagesContainerElement) {
+					messagesContainerElement.scrollTop = messagesContainerElement.scrollHeight;
+				}
 			});
 		}
 	};
